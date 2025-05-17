@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Snake Game</title>
+<style>
+  body {
+    margin: 0; padding: 20px;
+    background: #0d0d0d;
+    color: #00ff99;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    user-select: none;
+  }
+  h1 {
+    display: none;
+  }
+  canvas {
+    background: #111;
+    border-radius: 5px;
+    box-shadow:
+      0 0 5px #00ff99,
+      inset 0 0 5px #00cc77;
+    max-width: 400px;
+    max-height: 400px;
+    width: 90vmin;
+    height: 90vmin;
+    display: block;
+  }
+  #score {
+    font-size: 22px;
+    margin-bottom: 14px;
+    font-weight: 700;
+    color: #00ff99;
+    text-shadow: 0 0 6px #00ff99;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  #restart {
+    margin-top: 18px;
+    padding: 12px 28px;
+    font-size: 18px;
+    border: 2px solid #00ff99;
+    border-radius: 10px;
+    background: #111;
+    color: #00ff99;
+    cursor: pointer;
+    box-shadow: 0 0 10px #00ff99;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    display: none;
+  }
+  #restart:hover {
+    background: #00ff99;
+    color: #111;
+    box-shadow: 0 0 30px #00ff99, 0 0 10px #00cc77 inset;
+  }
+  .controls {
+    display: grid;
+    grid-template-areas:
+      ". up ."
+      "left . right"
+      ". down .";
+    grid-gap: 16px;
+    margin-top: 22px;
+  }
+  .controls button {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid #00ff99;
+    background: #111;
+    color: #00ff99;
+    font-size: 24px;
+    font-weight: 700;
+    box-shadow: 0 0 12px #00ff99;
+    cursor: pointer;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .controls button:active {
+    background: #00cc77;
+    box-shadow: 0 0 30px #00cc77 inset;
+    transform: scale(0.95);
+    color: #000;
+  }
+  .up    { grid-area: up; }
+  .down  { grid-area: down; }
+  .left  { grid-area: left; }
+  .right { grid-area: right; }
+</style>
+</head>
+<body>
+
+<div id="score">Score: 0</div>
+<canvas id="game" width="400" height="400"></canvas>
+<button id="restart">Restart</button>
+
+<div class="controls">
+  <button class="up" onclick="changeDirection('UP')">⬆</button>
+  <button class="left" onclick="changeDirection('LEFT')">⬅</button>
+  <button class="right" onclick="changeDirection('RIGHT')">➡</button>
+  <button class="down" onclick="changeDirection('DOWN')">⬇</button>
+</div>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const box = 20;
+  const size = 400;
+  const restartBtn = document.getElementById("restart");
+  const scoreDiv = document.getElementById("score");
+
+  let snake, direction, food, score, isGameOver;
+  let moveDelay = 160;
+  let lastMoveTime = 0;
+
+  function randomFood() {
+    return {
+      x: Math.floor(Math.random() * (size / box)) * box,
+      y: Math.floor(Math.random() * (size / box)) * box,
+    };
+  }
+
+  function drawFood() {
+    const gradient = ctx.createRadialGradient(
+      food.x + box / 2, food.y + box / 2, 3,
+      food.x + box / 2, food.y + box / 2, box / 2
+    );
+    gradient.addColorStop(0, "#ff0055");
+    gradient.addColorStop(1, "#880022");
+
+    ctx.fillStyle = gradient;
+    ctx.shadowColor = "#ff0055";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(food.x + box / 2, food.y + box / 2, box / 2 - 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawSnake() {
+    snake.forEach((seg, i) => {
+      const x = seg.x;
+      const y = seg.y;
+
+      const grad = ctx.createLinearGradient(x, y, x + box, y + box);
+      grad.addColorStop(0, "#00ff99");
+      grad.addColorStop(1, "#007744");
+      ctx.fillStyle = grad;
+
+      ctx.shadowColor = "#00ff99";
+      ctx.shadowBlur = 12;
+
+      roundRect(ctx, x, y, box, box, 8, true, false);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = i === 0 ? "#00ffaa" : "rgba(0, 255, 153, 0.6)";
+      roundRect(ctx, x + 4, y + 4, box - 8, box - 8, 4, true, false);
+    });
+
+    const head = snake[0];
+    ctx.fillStyle = "#003311";
+
+    let eyeY = head.y + box / 3;
+    let eyeXLeft, eyeXRight;
+
+    switch (direction) {
+      case "UP":
+        eyeXLeft = head.x + box / 3;
+        eyeXRight = head.x + (box * 2) / 3;
+        eyeY = head.y + box / 4;
+        break;
+      case "DOWN":
+        eyeXLeft = head.x + box / 3;
+        eyeXRight = head.x + (box * 2) / 3;
+        eyeY = head.y + (box * 3) / 4;
+        break;
+      case "LEFT":
+        eyeXLeft = head.x + box / 4;
+        eyeXRight = head.x + box / 4;
+        eyeY = head.y + box / 3;
+        break;
+      case "RIGHT":
+        eyeXLeft = head.x + (box * 3) / 4;
+        eyeXRight = head.x + (box * 3) / 4;
+        eyeY = head.y + box / 3;
+        break;
+      default:
+        eyeXLeft = head.x + box / 3;
+        eyeXRight = head.x + (box * 2) / 3;
+    }
+
+    const eyeRadius = 3;
+    ctx.beginPath();
+    ctx.arc(eyeXLeft, eyeY, eyeRadius, 0, Math.PI * 2);
+    ctx.arc(eyeXRight, eyeY, eyeRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function clearCanvas() {
+    ctx.clearRect(0, 0, size, size);
+  }
+
+  function drawGame() {
+    clearCanvas();
+    drawFood();
+    drawSnake();
+  }
+
+  function updateSnake() {
+    const head = {...snake[0]};
+    if (direction === "LEFT") head.x -= box;
+    if (direction === "RIGHT") head.x += box;
+    if (direction === "UP") head.y -= box;
+    if (direction === "DOWN") head.y += box;
+
+    if (
+      head.x < 0 || head.x >= size ||
+      head.y < 0 || head.y >= size ||
+      snake.some(seg => seg.x === head.x && seg.y === head.y)
+    ) {
+      return gameOver();
+    }
+
+    if (head.x === food.x && head.y === food.y) {
+      score++;
+      food = randomFood();
+      updateScore();
+    } else {
+      snake.pop();
+    }
+
+    snake.unshift(head);
+  }
+
+  function updateScore() {
+    scoreDiv.textContent = "Score: " + score;
+  }
+
+  function gameLoop(timestamp) {
+    if (!isGameOver && timestamp - lastMoveTime > moveDelay) {
+      updateSnake();
+      drawGame();
+      lastMoveTime = timestamp;
+    }
+    requestAnimationFrame(gameLoop);
+  }
+
+  function startGame() {
+    snake = [
+      { x: 200, y: 200 },
+      { x: 180, y: 200 }
+    ];
+    direction = "RIGHT";
+    food = randomFood();
+    score = 0;
+    updateScore();
+    isGameOver = false;
+    restartBtn.style.display = "none";
+    requestAnimationFrame(gameLoop);
+  }
+
+  function gameOver() {
+    isGameOver = true;
+    restartBtn.style.display = "block";
+    clearCanvas(); // clear snake and food
+  }
+
+  function changeDirection(dir) {
+    if (isGameOver) return;
+    if (dir === "LEFT" && direction !== "RIGHT") direction = "LEFT";
+    else if (dir === "RIGHT" && direction !== "LEFT") direction = "RIGHT";
+    else if (dir === "UP" && direction !== "DOWN") direction = "UP";
+    else if (dir === "DOWN" && direction !== "UP") direction = "DOWN";
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft") changeDirection("LEFT");
+    else if (e.key === "ArrowRight") changeDirection("RIGHT");
+    else if (e.key === "ArrowUp") changeDirection("UP");
+    else if (e.key === "ArrowDown") changeDirection("DOWN");
+  });
+
+  restartBtn.onclick = startGame;
+
+  function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+    if (typeof r === 'undefined') r = 5;
+    if (typeof r === 'number') {
+      r = {tl: r, tr: r, br: r, bl: r};
+    } else {
+      var defaultRadius = {tl: 0, tr: 0, br: 0, bl: 0};
+      for (var side in defaultRadius) {
+        r[side] = r[side] || defaultRadius[side];
+      }
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + r.tl, y);
+    ctx.lineTo(x + w - r.tr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    ctx.lineTo(x + w, y + h - r.br);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    ctx.lineTo(x + r.bl, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    ctx.lineTo(x, y + r.tl);
+    ctx.quadraticCurveTo(x, y, x + r.tl, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  startGame();
+</script>
+</body>
+  </html>
